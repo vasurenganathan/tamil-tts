@@ -179,5 +179,3 @@ if __name__ == u"__main__":
     lapsed=time.time()-start
     print(u"Tamil speech output to %s in %g(s)"%(outputfile,lapsed))
     sys.exit(0)
-
-    
