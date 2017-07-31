@@ -17,7 +17,8 @@ _DEBUG = False
 
 # Syllable to AF mapper
 class Syllable2AF(object):
-    AudioMap = {'': 'space1', u' ': 'space', 
+    numeral_digits = ['saiphar','onru','irandu','muunru','naanku','ainthu','aaru','eezu','ettu','onpathu','pattu']
+    AudioMap = {'.': 'stop', u' ':'space1', u' ': 'space', 
     u'அ': 'a', u'ஆ': 'aa', u'இ': 'i', u'ஈ': 'ii', u'உ': 'u', u'ஊ': 'uu', u'எ': 'e', u'ஏ': 'ee', u'ஐ': 'ai', u'ஒ': 'o', u'ஓ': 'oo', u'ஔ': 'au', u'ஃ': 'space1',
     u'க': 'ka', u'கா': 'kaa', u'கி': 'ki', u'கீ': 'kii', u'கு': 'ku', u'கூ': 'kuu', u'கெ': 'ke', u'கே': 'kee', u'கை': 'kai', u'கொ': 'ko', u'கோ': 'koo', u'கௌ': 'kau', u'க்': 'k', 
     u'க்ஷ': 'ksha', u'க்ஷா': 'kshaa', u'க்ஷி': 'kshi', u'க்ஷீ': 'kshii', u'க்ஷு': 'kshu', u'க்ஷூ': 'kshuu', u'க்ஷெ': 'kshe', u'க்ஷே': 'kshee', u'க்ஷை': 'kshai', u'க்ஷொ': 'ksho', u'க்ஷோ': 'kshoo', u'க்ஷௌ': 'kshau', 
@@ -54,8 +55,7 @@ class Syllable2AF(object):
             # convert digits 
             try:
                 digit = int(in_syllable)
-                numeral_digits = ['saiphar','onru','irandu','muunru','naanku','ainthu','aaru','eezu','ettu','onpathu']
-                return numeral_digits[digit]
+                return Syllable2AF.numeral_digits[digit]
             except ValueError as vex:
                 data = "space" #bad literal, _, +, -, (, ) etc.
                 
@@ -64,7 +64,7 @@ class Syllable2AF(object):
 
 # make this number go to 247+
 if _DEBUG: 
-    print("filled = %d/%d"%( len(list(filter(len,AudioMap.values()))),len(AudioMap.values())))
+    print("filled = %d/%d"%( len(list(filter(len,Syllable2AF.AudioMap.values()))),len(Syllable2AF.AudioMap.values())))
 
 # text to be output as audio
 class SubjectText(object):
@@ -77,7 +77,8 @@ class SubjectText(object):
         
         self._map_to_syllables()
         self._build_audio_mapping()
-    
+        self._soften_stops()
+            
     def reset(self):
         while len(self.audiomapping) > 0:
             self.audiomapping.pop()
@@ -95,7 +96,36 @@ class SubjectText(object):
             if syll in ["space1","space"]:
                 for i in range(0,REPEAT_SPACE):
                     self.audiomapping.append(syll) 
-            
+
+    # port of 'soften stops' subroutine from Prof. Vasu's code.
+    # soften intervocalic and after nasal stop consonants
+    def _soften_stops(self):
+        for pos in range(1,len(self.audiomapping)):
+            curr_s = self.audiomapping[pos]
+            prev_s = self.audiomapping[pos-1]
+            if curr_s.startswith('k'):
+                if prev_s.startswith('ng'):
+                    curr_s = 'ng'+curr_s[1:]
+                elif curr_s != 'k' and prev_s != 'k' and prev_s != 'space':
+                    curr_s = 'h'+curr_s[1:]
+            elif curr_s.startswith('c'):
+                if prev_s == 'nj':
+                    curr_s = 'j'+curr_s[1:]
+                elif curr_s != 'c' and prev_s != 'c' and prev_s != 'space':
+                    curr_s = 's'+curr_s[1:]
+            elif curr_s.startswith('th'):
+                if prev_s == 'n':
+                    curr_s = 'dh'+curr_s[2:]
+                elif curr_s != 'th' and prev_s != 'th' and prev_s != 'space':
+                    curr_s = 'dh'+curr_s[2:]
+            elif curr_s.startswith('t'):
+                if prev_s == 'nnn' or (curr_s !='t' and prev_s != 'space' and prev_s !='t' ):
+                    curr_s = 'd'+curr_s[1:]
+            elif curr_s.startswith('p'):
+                if prev_s == 'm' or (curr_s != 'p' and prev_s !='p' and prev_s != 'space'):
+                    curr_s = 'b' + curr_s[1:]
+            self.audiomapping[pos]=curr_s
+        
     def get_audiofile_order(self):
         # ['va','na','ka','m']
         if _DEBUG: pprint(self.audiomapping)
@@ -112,18 +142,41 @@ class ConcatennativeTTS(object):
         
     def run(self):
         self._mergeaudio()#write to outputfile
-        
+    
     def _mergeaudio(self):
         full_syllable_files = [os.path.join( ConcatennativeTTS.TARGETDIR, syllable_file + '.' + ConcatennativeTTS.FMT) \
                 for syllable_file in self.subject_text.get_audiofile_order()]
+        missing = []
         with open(self.outputfile,"wb") as out_fp:
             for f in full_syllable_files:
                 try:
                     with open(f,"rb") as in_fp:
                         out_fp.write(in_fp.read())
                 except IOError as ioe:
+                    if _DEBUG: missing.append(os.path.basename(f).split('.')[0])
                     print("Warning: cannot synthesize syllable \"%s\" with error \n\t[%s]"%(os.path.basename(f).split('.')[0],str(ioe)))
+        if _DEBUG and len(missing) >= 1:
+            pprint(set(missing))
         return
+    
+    @staticmethod
+    def test3():
+        available = [syllable+".mp3" for _,syllable in Syllable2AF.AudioMap.items()]
+        available.extend([f+'.mp3' for f in Syllable2AF.numeral_digits] )
+        files = os.listdir( ConcatennativeTTS.TARGETDIR )
+        for f in files:
+            f2 = os.path.basename(f)
+            if not ( f2 in available):
+                print Exception("File %s is not in syllable list"%f2)
+        
+        sys.exit(0)
+        
+    @staticmethod
+    def test2():
+        data = u" ".join( [letter for letter,_ in Syllable2AF.AudioMap.items()] )
+        tts = ConcatennativeTTS(data,"alphabets.mp3")
+        tts.run()
+        sys.exit(0)
     
     @staticmethod
     def test():
@@ -162,9 +215,11 @@ class ConcatennativeTTS(object):
 
 if _DEBUG:
     ConcatennativeTTS.test()
+    ConcatennativeTTS.test2()
+    ConcatennativeTTS.test3()
 
 if __name__ == u"__main__":
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 3:
         print("Usage: ")
         print("driver.py $AUDIO_OUTPUTFILENAME $TAMIL_TEXTFILENAME")
         sys.exit(-1)
