@@ -84,7 +84,8 @@ class SubjectText(object):
             self.audiomapping.pop()
         
     def _map_to_syllables(self):
-        self.syllables = tamil.utf8.get_letters(self.text)
+        tamil_or_spc = lambda x: tamil.utf8.istamil(x) or x in [' ','\r','\n','.',',',';','?','!']
+        self.syllables = filter( tamil_or_spc, tamil.utf8.get_letters(self.text) )
         
     def _build_audio_mapping(self):
         REPEAT_SPACE = 2
@@ -103,6 +104,7 @@ class SubjectText(object):
         for pos in range(1,len(self.audiomapping)):
             curr_s = self.audiomapping[pos]
             prev_s = self.audiomapping[pos-1]
+            next_s = (pos < len(self.audiomapping)-1) and self.audiomapping[pos+1] or None
             if curr_s.startswith('k'):
                 if prev_s.startswith('ng'):
                     curr_s = 'ng'+curr_s[1:]
@@ -114,9 +116,11 @@ class SubjectText(object):
                 elif curr_s != 'c' and prev_s != 'c' and prev_s != 'space':
                     curr_s = 's'+curr_s[1:]
             elif curr_s.startswith('th'):
-                if prev_s == 'n':
+                if prev_s in ['n','u'] or (curr_s != 'th' and prev_s != 'th' and prev_s != 'space'):
+                    if _DEBUG: curr_old = curr_s
                     curr_s = 'dh'+curr_s[2:]
-                elif curr_s != 'th' and prev_s != 'th' and prev_s != 'space':
+                    if _DEBUG: print("Softening %s%s -> %s%s"%(prev_s,curr_old,prev_s,curr_s))
+                elif next_s and next_s.find('space') >= 0:
                     curr_s = 'dh'+curr_s[2:]
             elif curr_s.startswith('t'):
                 if prev_s == 'nnn' or (curr_s !='t' and prev_s != 'space' and prev_s !='t' ):
